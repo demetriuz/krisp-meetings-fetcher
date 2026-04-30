@@ -22,6 +22,7 @@ Usage
     python krisp_client.py --search "keyword"   # full-text search
     python krisp_client.py --dry-run            # print markdown, don't save
     python krisp_client.py --json               # dump raw API JSON
+    python krisp_client.py --output-dir ~/notes # save files to ~/notes
 """
 
 import argparse
@@ -544,17 +545,20 @@ def _render_markdown(meeting: dict) -> str:
     return "\n".join(lines)
 
 
-def save_markdown(meeting: dict, dry_run: bool = False) -> Path:
+def save_markdown(meeting: dict, dry_run: bool = False,
+                  output_dir: Path | None = None) -> Path:
     prefix   = _fmt_prefix(meeting.get("date", "0000-00-00"))
     name     = _slug(meeting.get("name", "untitled"))
-    filename = _OUTPUT_DIR / f"{prefix}_{name}.md"
+    out      = output_dir if output_dir is not None else _OUTPUT_DIR
+    filename = out / f"{prefix}-{name}.md"
     content  = _render_markdown(meeting)
 
     if dry_run:
-        print(f"\n{'='*60}\n# Would write: {filename.name}\n{'='*60}")
+        print(f"\n{'='*60}\n# Would write: {filename}\n{'='*60}")
         print(content)
         return filename
 
+    out.mkdir(parents=True, exist_ok=True)
     filename.write_text(content, encoding="utf-8")
     return filename
 
@@ -576,6 +580,8 @@ def main():
     parser.add_argument("--after",  help="ISO date, e.g. 2026-04-01")
     parser.add_argument("--before", help="ISO date, e.g. 2026-05-01")
     parser.add_argument("--limit",  type=int, default=10, help="Max meetings (1-50, default 10)")
+    parser.add_argument("--output-dir", dest="output_dir", metavar="DIR",
+                        help="Directory to save markdown files (default: script directory)")
     parser.add_argument("--dry-run",   action="store_true", help="Print markdown, don't write files")
     parser.add_argument("--json",      dest="as_json", action="store_true", help="Dump raw JSON response")
     parser.add_argument("--debug-doc", dest="debug_doc", help="Print raw document text for a meeting ID and exit")
@@ -627,13 +633,16 @@ def main():
     print(f"Found {len(meetings)} meeting(s). Fetching key points...", flush=True)
     enrich_key_points(session, meetings)
 
+    output_dir = Path(args.output_dir).expanduser().resolve() if args.output_dir else None
+
     for m in meetings:
-        path = save_markdown(m, dry_run=args.dry_run)
+        path = save_markdown(m, dry_run=args.dry_run, output_dir=output_dir)
         if not args.dry_run:
-            print(f"  Saved: {path.name}")
+            print(f"  Saved: {path}")
 
     if not args.dry_run:
-        print(f"\nDone. Files written to {_OUTPUT_DIR}/")
+        out = output_dir if output_dir is not None else _OUTPUT_DIR
+        print(f"\nDone. Files written to {out}/")
 
 
 if __name__ == "__main__":
