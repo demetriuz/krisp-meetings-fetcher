@@ -550,7 +550,7 @@ def save_markdown(meeting: dict, dry_run: bool = False,
     prefix   = _fmt_prefix(meeting.get("date", "0000-00-00"))
     name     = _slug(meeting.get("name", "untitled"))
     out      = output_dir if output_dir is not None else _OUTPUT_DIR
-    filename = out / f"{prefix}-{name}.md"
+    filename = out / f"{prefix} {name}.md"
     content  = _render_markdown(meeting)
 
     if dry_run:
