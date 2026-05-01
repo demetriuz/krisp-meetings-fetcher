@@ -23,6 +23,7 @@ Usage
     python krisp_client.py --dry-run            # print markdown, don't save
     python krisp_client.py --json               # dump raw API JSON
     python krisp_client.py --output-dir ~/notes # save files to ~/notes
+    python krisp_client.py --sync               # only new meetings since last run
 """
 
 import argparse
@@ -65,6 +66,7 @@ _REDIRECT_HOST = "127.0.0.1"
 _REDIRECT_PORT = 9999
 _REDIRECT_URI  = f"http://{_REDIRECT_HOST}:{_REDIRECT_PORT}/callback"
 _TOKEN_FILE    = Path(__file__).parent / ".krisp_token.json"
+_SYNC_FILE     = Path(__file__).parent / ".krisp_sync.json"
 
 _CLIENT_NAME = "krisp-cli"
 
@@ -124,6 +126,24 @@ def _load_token() -> dict:
 def _save_token(data: dict):
     _TOKEN_FILE.write_text(json.dumps(data, indent=2))
     _TOKEN_FILE.chmod(0o600)
+
+
+# ── Sync state ───────────────────────────────────────────────────────────────
+
+def _load_sync_state() -> dict:
+    if _SYNC_FILE.exists():
+        return json.loads(_SYNC_FILE.read_text())
+    return {}
+
+
+def _save_sync_state(data: dict):
+    _SYNC_FILE.write_text(json.dumps(data, indent=2))
+    _SYNC_FILE.chmod(0o600)
+
+
+def _sync_after_key(output_dir: Path | None) -> str:
+    """Unique key per output directory so each target tracks its own cursor."""
+    return str(output_dir.resolve()) if output_dir else "__default__"
 
 
 # ── OAuth2 client registration (RFC 7591) ────────────────────────────────────
@@ -584,6 +604,8 @@ def main():
                         help="Directory to save markdown files (default: script directory)")
     parser.add_argument("--dry-run",   action="store_true", help="Print markdown, don't write files")
     parser.add_argument("--json",      dest="as_json", action="store_true", help="Dump raw JSON response")
+    parser.add_argument("--sync",      action="store_true",
+                        help="Only fetch meetings newer than the last successful run")
     parser.add_argument("--debug-doc", dest="debug_doc", help="Print raw document text for a meeting ID and exit")
     args = parser.parse_args()
 
@@ -605,6 +627,20 @@ def main():
             print(doc[:3000])  # first 3000 chars
         return
 
+    output_dir = Path(args.output_dir).expanduser().resolve() if args.output_dir else None
+
+    # Resolve --after: --sync overrides explicit --after with the saved cursor
+    after = args.after
+    sync_key = _sync_after_key(output_dir)
+    if args.sync:
+        state = _load_sync_state()
+        cursor = state.get(sync_key)
+        if cursor:
+            after = cursor
+            print(f"Sync mode: fetching meetings after {after}", flush=True)
+        else:
+            print("Sync mode: no previous run recorded, fetching all.", flush=True)
+
     print("Connecting to Krisp MCP...", flush=True)
     _init(session)
     print("Connected.", flush=True)
@@ -616,7 +652,7 @@ def main():
         data     = search_meetings(
             session,
             search=args.search,
-            after=args.after,
+            after=after,
             before=args.before,
             limit=min(args.limit, 50),
         )
@@ -633,8 +669,6 @@ def main():
     print(f"Found {len(meetings)} meeting(s). Fetching key points...", flush=True)
     enrich_key_points(session, meetings)
 
-    output_dir = Path(args.output_dir).expanduser().resolve() if args.output_dir else None
-
     for m in meetings:
         path = save_markdown(m, dry_run=args.dry_run, output_dir=output_dir)
         if not args.dry_run:
@@ -643,6 +677,17 @@ def main():
     if not args.dry_run:
         out = output_dir if output_dir is not None else _OUTPUT_DIR
         print(f"\nDone. Files written to {out}/")
+
+        # Update sync cursor to the most recent meeting date
+        if args.sync or not args.meeting_id:
+            dates = [m.get("date", "") for m in meetings if m.get("date")]
+            if dates:
+                newest = max(dates)
+                state  = _load_sync_state()
+                state[sync_key] = newest
+                _save_sync_state(state)
+                if args.sync:
+                    print(f"Sync cursor updated to {newest}")
 
 
 if __name__ == "__main__":

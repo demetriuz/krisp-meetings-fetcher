@@ -1,3 +1,4 @@
 .krisp_token.json
+.krisp_sync.json
 __pycache__/
 *.pyc

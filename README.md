@@ -55,6 +55,9 @@ python krisp_client.py --id <meeting-id>
 # Save to a custom directory
 python krisp_client.py --output-dir ~/notes/meetings
 
+# Only fetch meetings newer than the last run (incremental sync)
+python krisp_client.py --sync
+
 # Print Markdown to terminal without saving
 python krisp_client.py --dry-run
 
@@ -105,4 +108,4 @@ python krisp_client.py --debug-doc <meeting-id>
 
 ## Security
 
-Tokens are stored in `.krisp_token.json` with `600` permissions (owner-only). Do not commit this file.
+Tokens are stored in `.krisp_token.json` and the sync cursor in `.krisp_sync.json`, both with `600` permissions (owner-only). Do not commit these files.
