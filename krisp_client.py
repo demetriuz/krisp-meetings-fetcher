@@ -146,6 +146,16 @@ def _sync_after_key(output_dir: Path | None) -> str:
     return str(output_dir.resolve()) if output_dir else "__default__"
 
 
+def _advance_cursor(iso: str) -> str:
+    """Add 1 second so the API's inclusive `after` filter becomes exclusive."""
+    from datetime import timedelta
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        return (dt + timedelta(seconds=1)).isoformat()
+    except Exception:
+        return iso
+
+
 # ── OAuth2 client registration (RFC 7591) ────────────────────────────────────
 
 def _register_client() -> tuple[str, str]:
@@ -636,7 +646,7 @@ def main():
         state = _load_sync_state()
         cursor = state.get(sync_key)
         if cursor:
-            after = cursor
+            after = _advance_cursor(cursor)
             print(f"Sync mode: fetching meetings after {after}", flush=True)
         else:
             print("Sync mode: no previous run recorded, fetching all.", flush=True)
